@@ -1373,7 +1373,8 @@ void update_empire_needs(empire_data *emp, struct empire_island *eisle, struct e
 			
 			// ENEED_x: processing the item
 			switch (needs->type) {
-				case ENEED_WORKFORCE: {
+				case ENEED_WORKFORCE:
+				case ENEED_MILITARY: {
 					if (IS_FOOD(obj)) {
 						if (GET_FOOD_HOURS_OF_FULLNESS(obj) > needs->needed) {
 							amount = 1;
@@ -1402,7 +1403,7 @@ void update_empire_needs(empire_data *emp, struct empire_island *eisle, struct e
 			if (amount > 0) {
 				any = TRUE;
 				add_to_empire_storage(emp, eisle->island, store->vnum, -amount, 0);
-				log_to_empire(emp, ELOG_WORKFORCE, "Consumed %s (x%d) on %s", GET_OBJ_SHORT_DESC(obj), amount, eisle->name ? eisle->name : island->name);
+				log_to_empire(emp, needs->type == ENEED_MILITARY ? ELOG_MILITARY : ELOG_WORKFORCE, "Consumed %s (x%d) on %s", GET_OBJ_SHORT_DESC(obj), amount, eisle->name ? eisle->name : island->name);
 			}
 		}
 	}
@@ -1411,6 +1412,10 @@ void update_empire_needs(empire_data *emp, struct empire_island *eisle, struct e
 		if (!IS_SET(needs->status, ENEED_STATUS_UNSUPPLIED)) {
 			// ENEED_x: logging the problem
 			switch (needs->type) {
+				case ENEED_MILITARY: {
+					log_to_empire(emp, ELOG_ALERT, "Your military on %s is starving!", eisle->name ? eisle->name : island->name);
+					break;
+				}
 				case ENEED_WORKFORCE: {
 					// this logs to ALERT because if it's on WORKFORCE, members won't see it
 					log_to_empire(emp, ELOG_ALERT, "Your workforce on %s is starving!", eisle->name ? eisle->name : island->name);
@@ -1423,6 +1428,9 @@ void update_empire_needs(empire_data *emp, struct empire_island *eisle, struct e
 		}
 	}
 	else {
+		if (needs->type == ENEED_MILITARY && IS_SET(needs->status, ENEED_STATUS_UNSUPPLIED)) {
+			log_to_empire(emp, ELOG_ALERT, "Your military on %s is supplied again.", eisle->name ? eisle->name : island->name);
+		}
 		REMOVE_BIT(needs->status, ENEED_STATUS_UNSUPPLIED);
 	}
 	

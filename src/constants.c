@@ -2533,6 +2533,7 @@ const char *empire_log_types[] = {
 	"Workforce",
 	"Progress",	// 10
 	"Alert",
+	"Military",
 	"\n"
 };
 
@@ -2551,6 +2552,7 @@ const bool show_empire_log_type[] = {
 	FALSE,	// workforce
 	TRUE,	// 10, progress
 	TRUE,	// alert
+	FALSE,	// military
 };
 
 
@@ -2568,6 +2570,7 @@ const bool empire_log_request_only[] = {
 	TRUE,	// workforce
 	FALSE,	// 10, progress
 	FALSE,	// alert
+	TRUE,	// military
 };
 
 
@@ -2607,6 +2610,7 @@ const char *empire_attributes[] = {
 // ENEED_x: empire need types
 const char *empire_needs_types[] = {
 	"food for workforce",
+	"food for military",
 	"\n"
 };
 

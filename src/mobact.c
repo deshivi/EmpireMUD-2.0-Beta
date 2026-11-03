@@ -1065,24 +1065,28 @@ bool check_mob_pursuit(char_data *ch) {
 * building or room.
 *
 * @param char_data *ch The mobile
+* @param room_data *from The origin
 * @param int dir Which direction (NORTH, etc); may be NO_DIR
 * @param room_data *to_room The destination
 * @param bool pursuit If TRUE, loosens restrictions on movement due to a pursuit condition.
 * @return TRUE if the move is valid, FALSE otherwise
 */
-bool validate_mobile_move(char_data *ch, int dir, room_data *to_room, bool pursuit) {
-	empire_data *ch_emp = GET_LOYALTY(ch);
-	empire_data *room_emp = ROOM_OWNER(to_room);
-	sector_data *sect = SECT(to_room);
+bool validate_mobile_move_from(char_data *ch, room_data *from, int dir, room_data *to_room, bool pursuit) {
+	empire_data *ch_emp, *room_emp;
+	sector_data *sect;
 	
 	// sanity first
-	if (!ch || !to_room) {
-		log("SYSERR: validate_mobile_move called without %s", (ch ? "to_room" : "ch"));
+	if (!ch || !from || !to_room) {
+		log("SYSERR: validate_mobile_move_from called without %s", !ch ? "ch" : (!from ? "from" : "to_room"));
 		return FALSE;
 	}
 
+	ch_emp = GET_LOYALTY(ch);
+	room_emp = ROOM_OWNER(to_room);
+	sect = SECT(to_room);
+
 	// check building and entrances
-	if (dir != NO_DIR && ROOM_IS_CLOSED(to_room) && !ROOM_IS_CLOSED(IN_ROOM(ch)) && BUILDING_ENTRANCE(to_room) != dir && (!ROOM_BLD_FLAGGED(to_room, BLD_TWO_ENTRANCES) || BUILDING_ENTRANCE(to_room) != rev_dir[dir])) {
+	if (dir != NO_DIR && ROOM_IS_CLOSED(to_room) && !ROOM_IS_CLOSED(from) && BUILDING_ENTRANCE(to_room) != dir && (!ROOM_BLD_FLAGGED(to_room, BLD_TWO_ENTRANCES) || BUILDING_ENTRANCE(to_room) != rev_dir[dir])) {
 		return FALSE;	// can't enter that direction
 	}
 	if (ROOM_AFF_FLAGGED(to_room, ROOM_AFF_REPEL_NPCS)) {
@@ -1091,7 +1095,7 @@ bool validate_mobile_move(char_data *ch, int dir, room_data *to_room, bool pursu
 	if (ROOM_AFF_FLAGGED(to_room, ROOM_AFF_REPEL_ANIMALS) && MOB_FLAGGED(ch, MOB_ANIMAL)) {
 		return FALSE;	// repel animals aff
 	}
-	if (ROOM_IS_CLOSED(to_room) && !ROOM_IS_CLOSED(IN_ROOM(ch)) && MOB_FLAGGED(ch, MOB_AVOID_BUILDINGS)) {
+	if (ROOM_IS_CLOSED(to_room) && !ROOM_IS_CLOSED(from) && MOB_FLAGGED(ch, MOB_AVOID_BUILDINGS)) {
 		return FALSE;	// mobs that avoid buildings
 	}
 	if (!pursuit && ROOM_PRIVATE_OWNER(to_room) != NOBODY) {
@@ -1121,7 +1125,7 @@ bool validate_mobile_move(char_data *ch, int dir, room_data *to_room, bool pursu
 	}
 	
 	// check building permissions (hostile empire locations only)
-	if (ROOM_IS_CLOSED(to_room) && !ROOM_IS_CLOSED(IN_ROOM(ch)) && room_emp && room_emp != ch_emp && (MOB_FLAGGED(ch, MOB_AGGRESSIVE) || empire_is_hostile(room_emp, ch_emp, to_room))) {
+	if (ROOM_IS_CLOSED(to_room) && !ROOM_IS_CLOSED(from) && room_emp && room_emp != ch_emp && (MOB_FLAGGED(ch, MOB_AGGRESSIVE) || empire_is_hostile(room_emp, ch_emp, to_room))) {
 		if (MOB_FLAGGED(ch, MOB_AGGRESSIVE | MOB_CITYGUARD)) {
 			if (!pursuit && EMPIRE_HAS_TECH(room_emp, TECH_LOCKS)) {
 				return FALSE;	// only locks blocks aggressive/cityguard, and only if not pursuing
@@ -1136,6 +1140,11 @@ bool validate_mobile_move(char_data *ch, int dir, room_data *to_room, bool pursu
 }
 
 
+
+bool validate_mobile_move(char_data *ch, int dir, room_data *to_room, bool pursuit) {
+	return validate_mobile_move_from(ch, ch ? IN_ROOM(ch) : NULL, dir, to_room, pursuit);
+}
+
 /**
 * Attempts to move the mobile more or less at random, as part of normal movement.
 *
@@ -1149,6 +1158,10 @@ bool try_mobile_movement(char_data *ch) {
 	struct room_direction_data *ex_iter, *use_exit = NULL;
 	vehicle_data *veh;
 	
+	if (is_military_soldier(ch)) {
+		return FALSE;	// movement is controlled by the garrison
+	}
+
 	// animals don't move indoors
 	if (MOB_FLAGGED(ch, MOB_ANIMAL) && ROOM_IS_CLOSED(IN_ROOM(ch)) && !IS_ADVENTURE_ROOM(IN_ROOM(ch))) {
 		return FALSE;
@@ -1238,17 +1251,44 @@ bool try_mobile_movement(char_data *ch) {
 //// MOB ACTIVITY ////////////////////////////////////////////////////////////
 
 /**
+* Determines whether a cityguard's empire considers someone an intruder.
+*/
+bool empire_guard_is_enemy(empire_data *emp, char_data *vict, room_data *loc) {
+	bool is_hostile, is_enemy;
+
+	if (!emp || !vict || !loc || GET_LOYALTY(vict) == emp) {
+		return FALSE;
+	}
+	if (!IS_NPC(vict) && !vict->desc) {
+		return FALSE;
+	}
+	if (GET_LOYALTY(vict) && empire_is_friendly(emp, GET_LOYALTY(vict))) {
+		return FALSE;
+	}
+	if (GET_LEADER(vict) && !IS_NPC(GET_LEADER(vict)) && in_same_group(vict, GET_LEADER(vict)) && GET_LOYALTY(GET_LEADER(vict)) == emp) {
+		return FALSE;
+	}
+
+	is_hostile = (IS_HOSTILE(vict) || (!IS_DISGUISED(vict) && !IS_NPC(vict) && empire_is_hostile(emp, GET_LOYALTY(vict), loc)));
+	is_enemy = (IS_NPC(vict) && GET_LOYALTY(vict) && empire_is_hostile(emp, GET_LOYALTY(vict), loc));
+	return MOB_FLAGGED(vict, MOB_AGGRESSIVE) || is_hostile || is_enemy;
+}
+
+
+/**
 * Checks if there's anybody here to aggro (AGGRESSIVE or CITYGUARD flags).
 *
 * @param char_data *ch The mob doing the aggroing.
 * @return bool If TRUE, keep checking periodically. If FALSE, there are no valid targets at all.
 */
-// return FALSE to cancel event completely, TRUE to continue
 bool check_aggro(char_data *ch) {
 	char_data *vict, *ally, *targ;
-	bool is_hostile, is_enemy;
 	bool acted = FALSE, any = FALSE;
 	
+	if (is_military_soldier(ch) && !military_can_aggro(ch)) {
+		return TRUE;	// keep the event for when the garrison is ready again
+	}
+
 	#define CAN_AGGRO(mob, vict)  (!IS_DEAD(vict) && !NOHASSLE(vict) && (IS_NPC(vict) || !PRF_FLAGGED(vict, PRF_WIZHIDE)) && vict != GET_LEADER(mob) && !AFF_FLAGGED(vict, AFF_IMMUNE_PHYSICAL | AFF_NO_TARGET_IN_ROOM | AFF_NO_SEE_IN_ROOM | AFF_NO_ATTACK) && CAN_SEE(mob, vict) && can_fight((mob), (vict)))
 	
 	if (!acted && MOB_FLAGGED(ch, MOB_AGGRESSIVE) && (IS_ADVENTURE_ROOM(IN_ROOM(ch)) || !ISLAND_FLAGGED(IN_ROOM(ch), ISLE_NO_AGGRO))) {
@@ -1319,46 +1359,17 @@ bool check_aggro(char_data *ch) {
 				// mark that there's someone here
 				any = TRUE;
 				
-				if (!IS_NPC(vict) && !vict->desc) {
-					continue;	// ignore: linkdead player
-				}
-				if (GET_LOYALTY(vict) && empire_is_friendly(GET_LOYALTY(ch), GET_LOYALTY(vict))) {
-					continue;	// ignore: friendly empire
-				}
-				if (GET_LEADER(vict) && !IS_NPC(GET_LEADER(vict)) && in_same_group(vict, GET_LEADER(vict)) && GET_LOYALTY(GET_LEADER(vict)) == GET_LOYALTY(ch)) {
-					continue;	// ignore: grouped leader is in my empire
-				}
-				
-				// further checks:
-				is_hostile = (IS_HOSTILE(vict) || (!IS_DISGUISED(vict) && !IS_NPC(vict) && empire_is_hostile(GET_LOYALTY(ch), GET_LOYALTY(vict), IN_ROOM(ch))));
-				is_enemy = (IS_NPC(vict) && GET_LOYALTY(vict) && empire_is_hostile(GET_LOYALTY(ch), GET_LOYALTY(vict), IN_ROOM(ch)));
-				if (!MOB_FLAGGED(vict, MOB_AGGRESSIVE) && !is_hostile && !is_enemy) {
-					continue;	// ignore: reasons not to attack
+				if (!empire_guard_is_enemy(GET_LOYALTY(ch), vict, IN_ROOM(ch))) {
+					continue;
 				}
 				if (!CAN_AGGRO(ch, vict)) {
 					// check can-aggro last because it will scale the target
-					continue;	// ignore: invalid target
+					continue;
 				}
-				
-				// ok it's someone we CAN hit: now see why we should
-				if (MOB_FLAGGED(vict, MOB_AGGRESSIVE)) {
-					// attack: aggro mobs
-					hit(ch, vict, GET_EQ(ch, WEAR_WIELD), TRUE);
-					acted = TRUE;
-					break;
-				}
-				else if (is_hostile) {
-					// attack: hostile to empire
-					hit(ch, vict, GET_EQ(ch, WEAR_WIELD), TRUE);
-					acted = TRUE;
-					break;
-				}
-				else if (is_enemy) {
-					// attack: hostility against empire mobs
-					hit(ch, vict, GET_EQ(ch, WEAR_WIELD), TRUE);
-					acted = TRUE;
-					break;
-				}
+
+				hit(ch, vict, GET_EQ(ch, WEAR_WIELD), TRUE);
+				acted = TRUE;
+				break;
 			}
 		}	// end cityguard aggro
 	}	// end cityguard
@@ -1524,6 +1535,16 @@ EVENTFUNC(mob_despawn_event) {
 		return 60 RL_SEC;
 	}
 	
+	// Combat can continue even when no players are nearby.
+	if (is_military_soldier(mob) || FIGHTING(mob)) {
+		return 60 RL_SEC;
+	}
+	DL_FOREACH(character_list, chiter) {
+		if (FIGHTING(chiter) == mob) {
+			return 60 RL_SEC;
+		}
+	}
+
 	// animal-in-a-stable checks
 	if (MOB_FLAGGED(mob, MOB_ANIMAL | MOB_MOUNTABLE) && room_has_function_and_city_ok(NULL, IN_ROOM(mob), FNC_STABLE)) {
 		// check mob crowding
@@ -1750,8 +1771,8 @@ void spawn_one_room(room_data *room, bool only_artisans) {
 			// vehicle's own npcs?
 			if (VEH_OWNER(veh) && (vter = find_empire_vehicle_entry(VEH_OWNER(veh), veh))) {
 				LL_FOREACH(vter->npcs, npc) {
-					if (npc->mob) {
-						continue;	// check if the mob is already spawned
+					if (npc->mob || npc->vnum == SOLDIER) {
+						continue;	// soldiers are spawned by the garrison
 					}
 					if (only_artisans && npc->vnum != VEH_ARTISAN(veh)) {
 						continue;	// not spawning this now
@@ -1789,8 +1810,8 @@ void spawn_one_room(room_data *room, bool only_artisans) {
 		// spawn empire npcs who live here first
 		if (ROOM_OWNER(home) && (ter = find_territory_entry(ROOM_OWNER(home), room))) {
 			for (npc = ter->npcs; npc; npc = npc->next) {
-				if (npc->mob) {
-					continue;	// check if the mob is already spawned
+				if (npc->mob || npc->vnum == SOLDIER) {
+					continue;	// soldiers are spawned by the garrison
 				}
 				if (only_artisans && npc->vnum != artisan) {
 					continue;	// not spawning this now

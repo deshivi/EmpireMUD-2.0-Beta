@@ -831,6 +831,15 @@ void parse_building(FILE *fl, bld_vnum vnum) {
 				GET_BLD_FUNCTIONS(bld) = asciiflag_conv(line);
 				break;	
 			}
+
+			case 'G': {	// base garrison capacity
+				if (sscanf(line, "G %d", &int_in[0]) != 1) {
+					log("SYSERR: Format error in G line of %s: %s", buf2, line);
+					exit(1);
+				}
+				GET_BLD_GARRISON_CAPACITY(bld) = MAX(0, int_in[0]);
+				break;
+			}
 			
 			case 'H': {	// height
 				if (sscanf(line, "H 0 %d", &int_in[1]) != 1) {
@@ -1002,6 +1011,11 @@ void write_building_to_file(FILE *fl, bld_data *bld) {
 	if (GET_BLD_FUNCTIONS(bld)) {
 		fprintf(fl, "F\n");
 		fprintf(fl, "%s\n", bitv_to_alpha(GET_BLD_FUNCTIONS(bld)));
+	}
+
+	// G: base garrison capacity
+	if (GET_BLD_GARRISON_CAPACITY(bld) > 0) {
+		fprintf(fl, "G %d\n", GET_BLD_GARRISON_CAPACITY(bld));
 	}
 	
 	// H: height
@@ -2214,6 +2228,9 @@ void delete_territory_npc(struct empire_territory_data *ter, struct empire_npc_d
 	
 	// remove mob if any
 	if (npc->mob) {
+		if (is_military_soldier(npc->mob)) {
+			military_forget_soldier(npc->mob);
+		}
 		GET_EMPIRE_NPC_DATA(npc->mob) = NULL;	// un-link this npc data from the mob, or extract will corrupt memory
 		
 		if (!EXTRACTED(npc->mob) && !IS_DEAD(npc->mob)) {
@@ -2261,6 +2278,9 @@ void delete_vehicle_npc(struct empire_vehicle_data *vter, struct empire_npc_data
 	
 	// remove mob if any
 	if (npc->mob) {
+		if (is_military_soldier(npc->mob)) {
+			military_forget_soldier(npc->mob);
+		}
 		GET_EMPIRE_NPC_DATA(npc->mob) = NULL;	// un-link this npc data from the mob, or extract will corrupt memory
 		
 		if (!EXTRACTED(npc->mob) && !IS_DEAD(npc->mob)) {
@@ -2954,10 +2974,11 @@ void load_empire_storage(void) {
 */
 void parse_empire(FILE *fl, empire_vnum vnum) {
 	empire_data *emp, *find;
-	int t[6], j, iter;
+	int t[7], j, iter, scanned;
 	char line[1024], str_in[256];
 	struct empire_political_data *emp_pol;
 	struct empire_territory_data *ter;
+	struct empire_npc_data *npc;
 	struct empire_trade_data *trade;
 	struct empire_goal *egoal, *last_egoal = NULL;
 	struct empire_homeless_citizen *ehc;
@@ -3066,6 +3087,10 @@ void parse_empire(FILE *fl, empire_vnum vnum) {
 				switch (t[0]) {
 					case 1: {
 						EMPIRE_CITY_OVERAGE_WARNING_TIME(emp) = long_in;
+						break;
+					}
+					case 2: {
+						EMPIRE_MILITARY_LAST_NEEDS(emp) = long_in;
 						break;
 					}
 					default: {
@@ -3356,16 +3381,21 @@ void parse_empire(FILE *fl, empire_vnum vnum) {
 				break;
 			}
 			case 'N': {	// npc for terrritory OR vehicle
-				if (*(line + 1) == 'V' && sscanf(line, "NV %d %d %d %d", &t[0], &t[1], &t[2], &t[3]) == 4) {
+				if (*(line + 1) == 'V' && (scanned = sscanf(line, "NV %d %d %d %d %d %d %ld", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &long_in)) >= 4) {
 					// vehicle npc: t[3] is the vehicle id
 					if (!(vter = find_empire_vehicle_entry_by_id(emp, t[3]))) {
 						vter = create_empire_vehicle_entry_by_id(emp, t[3]);
 					}
 					
 					// attach the npc
-					create_empire_npc(emp, t[0], t[1], t[2], NULL, vter);
+					npc = create_empire_npc(emp, t[0], t[1], t[2], NULL, vter);
+					if (npc && npc->vnum == SOLDIER && scanned >= 7) {
+						npc->soldier_health = MAX(1, MIN(1000, t[4]));
+						npc->soldier_scale = MAX(0, t[5]);
+						npc->soldier_recovery = long_in;
+					}
 				}
-				else if (sscanf(line, "N %d %d %d %d", &t[0], &t[1], &t[2], &t[3]) == 4) {
+				else if ((scanned = sscanf(line, "N %d %d %d %d %d %d %ld", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &long_in)) >= 4) {
 					// room npc
 					if ((room = real_room(t[3]))) {
 						if (!(ter = find_territory_entry(emp, room))) {
@@ -3373,7 +3403,12 @@ void parse_empire(FILE *fl, empire_vnum vnum) {
 						}
 					
 						// this attaches itself to the room
-						create_empire_npc(emp, t[0], t[1], t[2], ter, NULL);
+						npc = create_empire_npc(emp, t[0], t[1], t[2], ter, NULL);
+						if (npc && npc->vnum == SOLDIER && scanned >= 7) {
+							npc->soldier_health = MAX(1, MIN(1000, t[4]));
+							npc->soldier_scale = MAX(0, t[5]);
+							npc->soldier_recovery = long_in;
+						}
 					}
 				}
 				else {
@@ -3541,6 +3576,9 @@ void write_empire_to_file(FILE *fl, empire_data *emp) {
 	if (EMPIRE_CITY_OVERAGE_WARNING_TIME(emp)) {
 		fprintf(fl, "B 1 %ld\n", EMPIRE_CITY_OVERAGE_WARNING_TIME(emp));
 	}
+	if (EMPIRE_MILITARY_LAST_NEEDS(emp)) {
+		fprintf(fl, "B 2 %ld\n", EMPIRE_MILITARY_LAST_NEEDS(emp));
+	}
 
 	// C: chores
 	HASH_ITER(hh, EMPIRE_ISLANDS(emp), isle, next_isle) {
@@ -3666,7 +3704,15 @@ void write_empire_to_file(FILE *fl, empire_data *emp) {
 	
 		// npcs who live there
 		for (npc = ter->npcs; npc; npc = npc->next) {
-			fprintf(fl, "N %d %d %d %d\n", npc->vnum, npc->sex, npc->name, npc->home ? GET_ROOM_VNUM(npc->home) : NOWHERE);
+			if (npc->vnum == SOLDIER) {
+				if (npc->mob) {
+					military_snapshot_soldier(npc->mob);
+				}
+				fprintf(fl, "N %d %d %d %d %d %d %ld\n", npc->vnum, npc->sex, npc->name, npc->home ? GET_ROOM_VNUM(npc->home) : NOWHERE, npc->soldier_health, npc->soldier_scale, npc->soldier_recovery);
+			}
+			else {
+				fprintf(fl, "N %d %d %d %d\n", npc->vnum, npc->sex, npc->name, npc->home ? GET_ROOM_VNUM(npc->home) : NOWHERE);
+			}
 		}
 	}
 	
@@ -3676,7 +3722,15 @@ void write_empire_to_file(FILE *fl, empire_data *emp) {
 	
 		// npcs who live there
 		LL_FOREACH(vter->npcs, npc) {
-			fprintf(fl, "NV %d %d %d %d\n", npc->vnum, npc->sex, npc->name, npc->home_vehicle ? VEH_IDNUM(npc->home_vehicle) : NOTHING);
+			if (npc->vnum == SOLDIER) {
+				if (npc->mob) {
+					military_snapshot_soldier(npc->mob);
+				}
+				fprintf(fl, "NV %d %d %d %d %d %d %ld\n", npc->vnum, npc->sex, npc->name, npc->home_vehicle ? VEH_IDNUM(npc->home_vehicle) : NOTHING, npc->soldier_health, npc->soldier_scale, npc->soldier_recovery);
+			}
+			else {
+				fprintf(fl, "NV %d %d %d %d\n", npc->vnum, npc->sex, npc->name, npc->home_vehicle ? VEH_IDNUM(npc->home_vehicle) : NOTHING);
+			}
 		}
 	}
 	
@@ -3961,6 +4015,9 @@ struct empire_npc_data *create_empire_npc(empire_data *emp, mob_vnum mobv, int s
 	npc->name = name;
 	npc->home = ter ? ter->room : NULL;
 	npc->home_vehicle = vter ? vter->veh : NULL;
+	npc->soldier_health = 1000;
+	npc->soldier_scale = 0;
+	npc->soldier_recovery = 0;
 	
 	npc->mob = NULL;
 	
@@ -4117,6 +4174,14 @@ struct empire_homeless_citizen *make_citizen_homeless(empire_data *emp, struct e
 	if (!emp || !npc) {
 		return NULL;	// no work
 	}
+
+	// Soldiers become ordinary citizens when evicted or stood down.
+	if (npc->vnum == SOLDIER) {
+		if (npc->mob) {
+			military_forget_soldier(npc->mob);
+		}
+		npc->vnum = (npc->sex == SEX_FEMALE) ? CITIZEN_FEMALE : CITIZEN_MALE;
+	}
 	
 	CREATE(ehc, struct empire_homeless_citizen, 1);
 	ehc->vnum = npc->vnum;
@@ -4128,6 +4193,442 @@ struct empire_homeless_citizen *make_citizen_homeless(empire_data *emp, struct e
 	LL_PREPEND(EMPIRE_HOMELESS_CITIZENS(emp), ehc);
 	EMPIRE_NEEDS_SAVE(emp) = TRUE;
 	return ehc;
+}
+
+
+/**
+* Determines whether a completed, owned building is able to house a garrison.
+*
+* @param room_data *room The building's home room.
+* @return bool TRUE if this is a garrison building, FALSE otherwise.
+*/
+bool is_garrison(room_data *room) {
+	return (room && HOME_ROOM(room) == room && !GET_ROOM_VEHICLE(room) && ROOM_OWNER(room) && GET_BUILDING(room) && IS_COMPLETE(room) && GET_BLD_GARRISON_CAPACITY(GET_BUILDING(room)) > 0);
+}
+
+
+/**
+* Gets the physical number of soldiers a garrison can house.
+*
+* @param room_data *room The garrison home room.
+* @return int Base capacity plus one per completed bedroom interior.
+*/
+int get_garrison_capacity(room_data *room) {
+	room_data *iter;
+	int capacity;
+
+	if (!is_garrison(room)) {
+		return 0;
+	}
+
+	capacity = GET_BLD_GARRISON_CAPACITY(GET_BUILDING(room));
+	DL_FOREACH2(interior_room_list, iter, next_interior) {
+		if (iter != room && HOME_ROOM(iter) == room && ROOM_OWNER(iter) == ROOM_OWNER(room) && IS_COMPLETE(iter) && HAS_FUNCTION(iter, FNC_BEDROOM)) {
+			++capacity;
+		}
+	}
+
+	return capacity;
+}
+
+
+/**
+* Resolves the player-selected target against physical housing capacity.
+*
+* @param room_data *room The garrison home room.
+* @return int The enabled target, or 0 if this garrison is disabled.
+*/
+int get_garrison_limit(room_data *room) {
+	int capacity, raw;
+
+	if ((capacity = get_garrison_capacity(room)) <= 0) {
+		return 0;
+	}
+
+	raw = get_room_extra_data(room, ROOM_EXTRA_GARRISON_LIMIT);
+	if (raw < 0) {
+		return capacity;
+	}
+	else if (raw > 0) {
+		return MIN(raw, capacity);
+	}
+	else {
+		return 0;
+	}
+}
+
+
+/**
+* Counts enlisted soldiers attached to one garrison's home room.
+*
+* @param room_data *room The garrison home room.
+* @return int Number of enlisted soldiers in the roster.
+*/
+int get_garrison_population(room_data *room) {
+	struct empire_territory_data *ter;
+	struct empire_npc_data *npc;
+	empire_data *emp;
+	int count = 0;
+
+	if (!room || !(emp = ROOM_OWNER(room)) || !(ter = find_territory_entry(emp, room))) {
+		return 0;
+	}
+
+	LL_FOREACH(ter->npcs, npc) {
+		if (npc->vnum == SOLDIER && npc->home == room) {
+			++count;
+		}
+	}
+
+	return count;
+}
+
+
+/**
+* Counts all enlisted soldiers belonging to an empire.
+*
+* @param empire_data *emp The empire to inspect.
+* @param bool active_only If TRUE, only count soldiers with a live mob.
+* @return int The number of matching soldiers.
+*/
+int get_empire_soldiers(empire_data *emp, bool active_only) {
+	struct empire_territory_data *ter, *next_ter;
+	struct empire_vehicle_data *vter, *next_vter;
+	struct empire_npc_data *npc;
+	int count = 0;
+
+	if (!emp) {
+		return 0;
+	}
+
+	HASH_ITER(hh, EMPIRE_TERRITORY_LIST(emp), ter, next_ter) {
+		LL_FOREACH(ter->npcs, npc) {
+			if (npc->vnum == SOLDIER && (!active_only || npc->mob)) {
+				++count;
+			}
+		}
+	}
+	HASH_ITER(hh, EMPIRE_VEHICLE_LIST(emp), vter, next_vter) {
+		LL_FOREACH(vter->npcs, npc) {
+			if (npc->vnum == SOLDIER && (!active_only || npc->mob)) {
+				++count;
+			}
+		}
+	}
+
+	return count;
+}
+
+
+/**
+* Tests whether a live mob is bound to an enlisted empire NPC record.
+*
+* @param char_data *ch The mob to test.
+* @return bool TRUE if this is an enlisted soldier.
+*/
+bool is_military_soldier(char_data *ch) {
+	return (ch && IS_NPC(ch) && GET_EMPIRE_NPC_DATA(ch) && GET_EMPIRE_NPC_DATA(ch)->vnum == SOLDIER && GET_EMPIRE_NPC_DATA(ch)->mob == ch);
+}
+
+
+// TRUE if an npc record occupies one of the garrison's completed bedrooms.
+static bool is_garrison_bedroom_resident(struct empire_npc_data *npc, room_data *garrison) {
+	room_data *home = npc ? npc->home : NULL;
+	return (home && home != garrison && HOME_ROOM(home) == garrison && ROOM_OWNER(home) == ROOM_OWNER(garrison) && IS_COMPLETE(home) && HAS_FUNCTION(home, FNC_BEDROOM));
+}
+
+
+// Counts legacy residents who still occupy garrison bedroom capacity.
+static int count_garrison_bedroom_residents(empire_data *emp, room_data *garrison) {
+	struct empire_territory_data *ter, *next_ter;
+	struct empire_npc_data *npc;
+	int count = 0;
+
+	HASH_ITER(hh, EMPIRE_TERRITORY_LIST(emp), ter, next_ter) {
+		LL_FOREACH(ter->npcs, npc) {
+			if (npc->vnum != SOLDIER && is_garrison_bedroom_resident(npc, garrison)) {
+				++count;
+			}
+		}
+	}
+
+	return count;
+}
+
+
+// TRUE if a real citizen is free to relocate into a garrison roster.
+static bool can_recruit_to_garrison(struct empire_npc_data *npc) {
+	char_data *mob;
+
+	if (!npc || (npc->vnum != CITIZEN_MALE && npc->vnum != CITIZEN_FEMALE)) {
+		return FALSE;
+	}
+	if (!(mob = npc->mob)) {
+		return TRUE;
+	}
+
+	// A changed live vnum denotes a worker or other non-idle assignment.
+	if (!IS_NPC(mob) || !IN_ROOM(mob) || GET_EMPIRE_NPC_DATA(mob) != npc || GET_MOB_VNUM(mob) != npc->vnum || EXTRACTED(mob) || IS_DEAD(mob) || !AWAKE(mob) || mob->desc || mob->over_time_effects) {
+		return FALSE;
+	}
+	if (FIGHTING(mob) || GET_FED_ON_BY(mob) || GET_FEEDING_FROM(mob) || AFF_FLAGGED(mob, AFF_CHARM | AFF_STUNNED | AFF_HARD_STUNNED | AFF_IMMOBILIZED) || MOB_FLAGGED(mob, MOB_TIED) || IS_INJURED(mob, INJ_TIED) || GET_LED_BY(mob) || GET_LEADING_MOB(mob) || GET_LEADING_VEHICLE(mob)) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+
+// Finds one recruit in priority order: local bedrooms, unspawned, then idle.
+static struct empire_npc_data *find_garrison_recruit(empire_data *emp, room_data *garrison, struct empire_territory_data **from_ter, struct empire_vehicle_data **from_vter) {
+	struct empire_territory_data *ter, *next_ter;
+	struct empire_vehicle_data *vter, *next_vter;
+	struct empire_npc_data *npc;
+	int pass;
+
+	*from_ter = NULL;
+	*from_vter = NULL;
+
+	for (pass = 0; pass < 3; ++pass) {
+		HASH_ITER(hh, EMPIRE_TERRITORY_LIST(emp), ter, next_ter) {
+			LL_FOREACH(ter->npcs, npc) {
+				if (!can_recruit_to_garrison(npc)) {
+					continue;
+				}
+				if ((pass == 0 && !is_garrison_bedroom_resident(npc, garrison)) || (pass == 1 && npc->mob) || (pass == 2 && !npc->mob)) {
+					continue;
+				}
+
+				*from_ter = ter;
+				return npc;
+			}
+		}
+
+		// Bedroom residents are always room records.
+		if (pass == 0) {
+			continue;
+		}
+		HASH_ITER(hh, EMPIRE_VEHICLE_LIST(emp), vter, next_vter) {
+			LL_FOREACH(vter->npcs, npc) {
+				if (!can_recruit_to_garrison(npc) || (pass == 1 && npc->mob) || (pass == 2 && !npc->mob)) {
+					continue;
+				}
+
+				*from_vter = vter;
+				return npc;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+
+// Moves one citizen record without changing the empire's total population.
+static void enlist_garrison_recruit(empire_data *emp, struct empire_npc_data *npc, struct empire_territory_data *from_ter, struct empire_vehicle_data *from_vter, struct empire_territory_data *to_ter) {
+	struct empire_island *isle;
+	int from_island = NO_ISLAND, to_island = NO_ISLAND;
+
+	if (npc->mob) {
+		act("$n leaves to enlist in the military.", TRUE, npc->mob, NULL, NULL, TO_ROOM | DG_NO_TRIG);
+		extract_char(npc->mob);
+		extract_pending_chars();
+		npc->mob = NULL;
+	}
+
+	if (from_ter) {
+		from_island = ROOM_TECHS_APPLIED_TO_ISLAND(from_ter->room);
+		LL_DELETE(from_ter->npcs, npc);
+	}
+	else if (from_vter) {
+		from_island = (from_vter->veh ? VEH_APPLIED_TO_ISLAND(from_vter->veh) : NO_ISLAND);
+		LL_DELETE(from_vter->npcs, npc);
+	}
+
+	to_island = ROOM_TECHS_APPLIED_TO_ISLAND(to_ter->room);
+	if (from_island != to_island) {
+		if (from_island >= 0 && (isle = get_empire_island(emp, from_island))) {
+			SAFE_ADD(isle->population, -1, 0, INT_MAX, FALSE);
+		}
+		if (to_island >= 0 && (isle = get_empire_island(emp, to_island))) {
+			SAFE_ADD(isle->population, 1, 0, INT_MAX, FALSE);
+		}
+	}
+
+	npc->vnum = SOLDIER;
+	npc->home = to_ter->room;
+	npc->home_vehicle = NULL;
+	npc->soldier_health = 1000;
+	npc->soldier_scale = 0;
+	npc->soldier_recovery = 0;
+	LL_PREPEND(to_ter->npcs, npc);
+
+	EMPIRE_NEEDS_SAVE(emp) = TRUE;
+	military_refresh();
+}
+
+
+/**
+* Resets the ordinary population timer and the optional military timer.
+*
+* @param room_data *room The garrison home room.
+*/
+void reset_garrison_recruitment(room_data *room) {
+	struct empire_territory_data *ter;
+	int interval = config_get_int("military_recruitment_interval");
+
+	if (!room) {
+		return;
+	}
+	if (ROOM_OWNER(room) && (ter = find_territory_entry(ROOM_OWNER(room), room))) {
+		ter->population_timer = config_get_int("building_population_timer");
+		EMPIRE_NEEDS_SAVE(ROOM_OWNER(room)) = TRUE;
+	}
+	if (interval > 0 && is_garrison(room) && get_garrison_limit(room) > 0) {
+		set_room_extra_data(room, ROOM_EXTRA_GARRISON_RECRUIT_TIME, time(0) + interval);
+	}
+	else {
+		remove_room_extra_data(room, ROOM_EXTRA_GARRISON_RECRUIT_TIME);
+	}
+}
+
+
+/**
+* Recruits at most one real citizen into a garrison on its recruitment timer.
+*
+* @param empire_data *emp The owning empire.
+* @param struct empire_territory_data *ter The garrison's territory entry.
+* @param bool force If TRUE, bypass the timer.
+*/
+void populate_garrison(empire_data *emp, struct empire_territory_data *ter, bool force) {
+	struct empire_territory_data *from_ter;
+	struct empire_vehicle_data *from_vter;
+	struct empire_npc_data *npc;
+	room_data *room;
+	int interval, legacy, limit, population;
+	time_t next_recruit, now = time(0);
+
+	if (!emp || !ter || !(room = ter->room) || ROOM_OWNER(room) != emp || !is_garrison(room)) {
+		return;
+	}
+
+	reconcile_garrison(room);
+	if ((limit = get_garrison_limit(room)) <= 0) {
+		return;
+	}
+	if (!EMPIRE_ADMIN_FLAGGED(emp, EADM_FREE_NEEDS) && GET_ISLAND_ID(room) != NO_ISLAND && empire_has_needs_status(emp, GET_ISLAND_ID(room), ENEED_MILITARY, ENEED_STATUS_UNSUPPLIED)) {
+		return;
+	}
+
+	// An override uses a saved deadline; zero preserves the building cadence.
+	interval = config_get_int("military_recruitment_interval");
+	if (interval > 0 && get_garrison_population(room) >= limit) {
+		return;
+	}
+	if (!force) {
+		if (interval > 0) {
+			next_recruit = get_room_extra_data(room, ROOM_EXTRA_GARRISON_RECRUIT_TIME);
+			if (!next_recruit) {
+				reset_garrison_recruitment(room);
+				return;
+			}
+			if (next_recruit > now) {
+				return;
+			}
+			// Retry once per interval without recruiting catch-up batches.
+			set_room_extra_data(room, ROOM_EXTRA_GARRISON_RECRUIT_TIME, now + interval);
+		}
+		else if (--ter->population_timer > 0) {
+			return;
+		}
+	}
+	if ((population = get_garrison_population(room)) >= limit) {
+		return;
+	}
+
+	npc = find_garrison_recruit(emp, room, &from_ter, &from_vter);
+	if (!npc) {
+		return;
+	}
+
+	// Existing bedroom residents already consume capacity until converted.
+	legacy = count_garrison_bedroom_residents(emp, room);
+	if (!is_garrison_bedroom_resident(npc, room) && population + legacy >= limit) {
+		return;
+	}
+
+	enlist_garrison_recruit(emp, npc, from_ter, from_vter, ter);
+	reset_garrison_recruitment(room);
+}
+
+
+/**
+* Safely stands down a soldier as an ordinary homeless citizen.
+*
+* @param empire_data *emp The owning empire.
+* @param struct empire_npc_data *npc The soldier record. Caller ensures any live soldier is safe to remove.
+*/
+void discharge_soldier(empire_data *emp, struct empire_npc_data *npc) {
+	struct empire_territory_data *ter, *next_ter;
+	struct empire_vehicle_data *vter, *next_vter;
+	struct empire_npc_data *iter;
+
+	if (!emp || !npc || npc->vnum != SOLDIER) {
+		return;
+	}
+
+	HASH_ITER(hh, EMPIRE_TERRITORY_LIST(emp), ter, next_ter) {
+		LL_FOREACH(ter->npcs, iter) {
+			if (iter == npc) {
+				reset_garrison_recruitment(ter->room);
+				make_citizen_homeless(emp, npc);
+				delete_territory_npc(ter, npc);
+				military_refresh();
+				return;
+			}
+		}
+	}
+	HASH_ITER(hh, EMPIRE_VEHICLE_LIST(emp), vter, next_vter) {
+		LL_FOREACH(vter->npcs, iter) {
+			if (iter == npc) {
+				vter->population_timer = config_get_int("building_population_timer");
+				make_citizen_homeless(emp, npc);
+				delete_vehicle_npc(vter, npc);
+				military_refresh();
+				return;
+			}
+		}
+	}
+}
+
+
+/**
+* Removes only unspawned soldiers above a garrison's resolved limit.
+*
+* @param room_data *room The garrison home room.
+*/
+void reconcile_garrison(room_data *room) {
+	struct empire_territory_data *ter;
+	struct empire_npc_data *npc;
+	empire_data *emp;
+	int limit;
+
+	if (!room || !(emp = ROOM_OWNER(room)) || !(ter = find_territory_entry(emp, room))) {
+		return;
+	}
+
+	limit = get_garrison_limit(room);
+	while (get_garrison_population(room) > limit) {
+		for (npc = ter->npcs; npc; npc = npc->next) {
+			if (npc->vnum == SOLDIER && !npc->mob) {
+				break;
+			}
+		}
+		if (!npc) {
+			break;	// active excess is returned and discharged by military.c
+		}
+		discharge_soldier(emp, npc);
+	}
 }
 
 
@@ -4250,12 +4751,22 @@ void perform_populate_npc(room_data *room, vehicle_data *veh, struct empire_terr
 */
 void populate_npc(room_data *room, struct empire_territory_data *ter, bool force) {
 	empire_data *emp;
+	room_data *home;
 	
 	if (!room || !GET_BUILDING(room) || !(emp = ROOM_OWNER(room)) || (!ter && !(ter = find_territory_entry(emp, room)))) {
 		return;	// no work
 	}
 	if (!IS_COMPLETE(room) || ROOM_PRIVATE_OWNER(HOME_ROOM(room)) != NOBODY) {
 		return;	// nobody populates here
+	}
+
+	home = HOME_ROOM(room);
+	if (room == home && is_garrison(room)) {
+		populate_garrison(emp, ter, force);
+		return;
+	}
+	if (room != home && is_garrison(home) && get_garrison_limit(home) > 0 && HAS_FUNCTION(room, FNC_BEDROOM)) {
+		return;	// enabled garrisons reserve their bedrooms for physical capacity
 	}
 	
 	// check timer: exits early if there are no homeless and no 'force'
@@ -4338,8 +4849,14 @@ void update_empire_npc_data(void) {
 */
 char_data *spawn_empire_npc_to_room(empire_data *emp, struct empire_npc_data *npc, room_data *room, mob_vnum override_mob) {
 	char_data *mob;
+	int id;
+	bool soldier = npc->vnum == SOLDIER;
 	
 	mob = read_mobile((override_mob == NOTHING) ? npc->vnum : override_mob, TRUE);
+	if (!mob) {
+		return NULL;
+	}
+	id = char_script_id(mob);
 	
 	GET_EMPIRE_NPC_DATA(mob) = npc;
 	npc->mob = mob;
@@ -4356,10 +4873,11 @@ char_data *spawn_empire_npc_to_room(empire_data *emp, struct empire_npc_data *np
 
 	// put in the room
 	char_to_room(mob, room);
-	act("$n arrives.", TRUE, mob, NULL, NULL, TO_ROOM);
+	act("$n arrives.", TRUE, mob, NULL, NULL, TO_ROOM | (soldier ? DG_NO_TRIG : NOBITS));
 	load_mtrigger(mob);
 	
-	return mob;
+	mob = find_char(id);
+	return (mob && !EXTRACTED(mob) && !IS_DEAD(mob) && GET_EMPIRE_NPC_DATA(mob)) ? mob : NULL;
 }
 
 
@@ -4381,6 +4899,9 @@ void kill_empire_npc(char_data *ch) {
 	if (!IS_NPC(ch) || !GET_EMPIRE_NPC_DATA(ch) || !(emp = real_empire(GET_EMPIRE_NPC_DATA(ch)->empire_id))) {
 		return;
 	}
+	if (is_military_soldier(ch)) {
+		military_forget_soldier(ch);
+	}
 	
 	// find and remove the entry: territory
 	HASH_ITER(hh, EMPIRE_TERRITORY_LIST(emp), ter, ter_next) {
@@ -4392,6 +4913,9 @@ void kill_empire_npc(char_data *ch) {
 				
 				// reset the population timer
 				ter->population_timer = building_population_timer;
+				if (is_garrison(ter->room)) {
+					reset_garrison_recruitment(ter->room);
+				}
 				found = TRUE;
 			}
 		}
@@ -4403,7 +4927,7 @@ void kill_empire_npc(char_data *ch) {
 	
 	// find and remove the entry: vehicle
 	HASH_ITER(hh, EMPIRE_VEHICLE_LIST(emp), vter, vter_next) {
-		for (npc = ter->npcs; npc && !found; npc = npc_next) {
+		for (npc = vter->npcs; npc && !found; npc = npc_next) {
 			npc_next = npc->next;
 			
 			if (npc == GET_EMPIRE_NPC_DATA(ch)) {

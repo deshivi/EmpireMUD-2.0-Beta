@@ -3189,7 +3189,7 @@ void do_stat_building(char_data *ch, bld_data *bdg, bool details) {
 	}
 	
 	build_page_display(ch, "Hitpoints: [&g%d&0], Fame: [&g%d&0], Extra Rooms: [&g%d&0], Height: [&g%d&0]", GET_BLD_MAX_DAMAGE(bdg), GET_BLD_FAME(bdg), GET_BLD_EXTRA_ROOMS(bdg), GET_BLD_HEIGHT(bdg));
-	build_page_display(ch, "Citizens: [&g%d&0], Military: [&g%d&0], Artisan: [&g%d&0] &c%s&0", GET_BLD_CITIZENS(bdg), GET_BLD_MILITARY(bdg), GET_BLD_ARTISAN(bdg), GET_BLD_ARTISAN(bdg) != NOTHING ? get_mob_name_by_proto(GET_BLD_ARTISAN(bdg), FALSE) : "none");
+	build_page_display(ch, "Citizens: [&g%d&0], Military: [&g%d&0], Garrison Capacity: [&g%d&0], Artisan: [&g%d&0] &c%s&0", GET_BLD_CITIZENS(bdg), GET_BLD_MILITARY(bdg), GET_BLD_GARRISON_CAPACITY(bdg), GET_BLD_ARTISAN(bdg), GET_BLD_ARTISAN(bdg) != NOTHING ? get_mob_name_by_proto(GET_BLD_ARTISAN(bdg), FALSE) : "none");
 	
 	if (GET_BLD_RELATIONS(bdg)) {
 		build_page_display_str(ch, "Relations:");

@@ -51,9 +51,15 @@ BARRACKS FORT
 
 Extra rooms:  10, interlink
 Military:  20
+Garrison capacity:  5, plus 1 per completed bedroom
 
-The barracks are one of the main parts of forts and outposts. It provides
-military to the city, and can be interlinked with other buildings.
+Barracks provide a garrison for your empire. Soldiers are real citizens who
+can be assigned from anywhere in your empire, and they defend owned land near
+their barracks when supplied with food. Their capacity grows by one for each
+completed bedroom inside the barracks.
+
+The Military value contributes to the empire's military score; it does not
+recruit or deploy soldiers.
 
 See also: DESIGNATE, INTERLINK
 #
@@ -722,9 +728,13 @@ MOUNTAINGARRISON "MOUNTAIN GARRISON"
 
 Extra rooms:  10, interlink
 Military:  20
+Garrison capacity:  5, plus 1 per completed bedroom
 Temperature:  warmer when cold
 
-House your military in the mountains, out of the reach of your enemies.
+House your garrison in the mountains, out of the reach of your enemies.
+Completed bedrooms inside the garrison add to its capacity. Its Military
+value contributes to the empire's military score; it does not recruit or
+deploy soldiers.
 
 See also: DESIGNATE, INTERLINK
 #
@@ -763,7 +773,8 @@ MOUNTAINOUTPOST "MOUNTAIN OUTPOST"
 Military:  5
 
 A mountain outpost is a safe place constructed in the middle of the mountains.
-It has no other purpose.
+Its Military value contributes to the empire's military score; it does not
+recruit or deploy soldiers.
 #
 MOUNTAINTERRACE "MOUNTAIN TERRACE" "MOUNTAIN FARMING" TERRACE TERRACES TERRACING
 
@@ -1384,8 +1395,10 @@ See also: TRADE COMMAND
 Extra rooms:  10, interlink
 Military:  20
 
-The training yard serves as an entrance to various fort facilities and as such,
-you can designate extra rooms and interlink with other buildings.
+The training yard serves as an entrance to various fort facilities. Its
+Military value contributes to the empire's military score; it does not recruit
+or deploy soldiers. You can designate extra rooms and interlink it with other
+buildings.
 
 See also: DESIGNATE, INTERLINK
 #

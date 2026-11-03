@@ -1228,6 +1228,7 @@ void save_olc_building(descriptor_data *desc) {
 		HASH_ITER(hh, world_table, room, next_room) {
 			if (GET_BUILDING(room) && GET_BLD_VNUM(GET_BUILDING(room)) == vnum && IS_COMPLETE(room) && (emp = ROOM_OWNER(room))) {
 				adjust_building_tech(emp, room, TRUE);
+				reconcile_garrison(HOME_ROOM(room));
 				
 				if (GET_BUILDING(room)) {
 					qt_empire_players(emp, qt_gain_building, vnum);
@@ -1236,6 +1237,7 @@ void save_olc_building(descriptor_data *desc) {
 			}
 		}
 	}
+	military_refresh();
 }
 
 
@@ -1392,6 +1394,7 @@ void olc_show_building(char_data *ch) {
 	build_page_display(ch, "<%sfame\t0> %d", OLC_LABEL_VAL(GET_BLD_FAME(bdg), 0), GET_BLD_FAME(bdg));	
 	build_page_display(ch, "<%scitizens\t0> %d", OLC_LABEL_VAL(GET_BLD_CITIZENS(bdg), 0), GET_BLD_CITIZENS(bdg));
 	build_page_display(ch, "<%smilitary\t0> %d", OLC_LABEL_VAL(GET_BLD_MILITARY(bdg), 0), GET_BLD_MILITARY(bdg));
+	build_page_display(ch, "<%sgarrison-capacity\t0> %d", OLC_LABEL_VAL(GET_BLD_GARRISON_CAPACITY(bdg), 0), GET_BLD_GARRISON_CAPACITY(bdg));
 	
 	build_page_display(ch, "<%sartisan\t0> [%d] %s", OLC_LABEL_VAL(GET_BLD_ARTISAN(bdg), NOTHING), GET_BLD_ARTISAN(bdg), GET_BLD_ARTISAN(bdg) == NOTHING ? "none" : get_mob_name_by_proto(GET_BLD_ARTISAN(bdg), FALSE));
 	
@@ -1596,6 +1599,12 @@ OLC_MODULE(bedit_extrarooms) {
 OLC_MODULE(bedit_fame) {
 	bld_data *bdg = GET_OLC_BUILDING(ch->desc);
 	GET_BLD_FAME(bdg) = olc_process_number(ch, argument, "fame", "fame", -1000, 1000, GET_BLD_FAME(bdg));
+}
+
+
+OLC_MODULE(bedit_garrison_capacity) {
+	bld_data *bdg = GET_OLC_BUILDING(ch->desc);
+	GET_BLD_GARRISON_CAPACITY(bdg) = olc_process_number(ch, argument, "garrison capacity", "garrison-capacity", 0, 1000, GET_BLD_GARRISON_CAPACITY(bdg));
 }
 
 

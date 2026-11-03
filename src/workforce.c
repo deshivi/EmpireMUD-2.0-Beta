@@ -941,6 +941,69 @@ void charge_workforce(empire_data *emp, int chore, room_data *room, char_data *w
 
 
 /**
+* Accrues one fullness of food per enlisted soldier on the military food cycle.
+*/
+void military_upkeep(void) {
+	empire_data *emp, *next_emp;
+	struct empire_territory_data *ter, *next_ter;
+	struct empire_npc_data *npc;
+	int count;
+
+	HASH_ITER(hh, empire_table, emp, next_emp) {
+		HASH_ITER(hh, EMPIRE_TERRITORY_LIST(emp), ter, next_ter) {
+			count = 0;
+			LL_FOREACH(ter->npcs, npc) {
+				if (npc->vnum == SOLDIER) {
+					++count;
+				}
+			}
+			if (count && ter->room) {
+				add_empire_needs(emp, GET_ISLAND_ID(ter->room), ENEED_MILITARY, count);
+			}
+		}
+	}
+}
+
+
+/**
+* Bills accrued military food independently of recruitment and response speed.
+*/
+void military_needs_update(void) {
+	empire_data *emp, *next_emp;
+	struct empire_island *eisle, *next_eisle;
+	struct empire_needs *needs;
+	time_t now = time(0);
+	int interval = config_get_int("military_needs_interval");
+	int type = ENEED_MILITARY;
+
+	HASH_ITER(hh, empire_table, emp, next_emp) {
+		if (!EMPIRE_MILITARY_LAST_NEEDS(emp)) {
+			EMPIRE_MILITARY_LAST_NEEDS(emp) = now;
+			EMPIRE_NEEDS_SAVE(emp) = TRUE;
+		}
+		else if (EMPIRE_MILITARY_LAST_NEEDS(emp) + interval <= now) {
+			EMPIRE_MILITARY_LAST_NEEDS(emp) = now;
+			EMPIRE_NEEDS_SAVE(emp) = TRUE;
+			sort_einv_for_empire(emp, EINV_SORT_PERISHABLE);
+			HASH_ITER(hh, EMPIRE_ISLANDS(emp), eisle, next_eisle) {
+				HASH_FIND_INT(eisle->needs, &type, needs);
+				if (!needs) {
+					continue;
+				}
+				if (needs->needed > 0 && !EMPIRE_ADMIN_FLAGGED(emp, EADM_FREE_NEEDS)) {
+					update_empire_needs(emp, eisle, needs);
+				}
+				else if (IS_SET(needs->status, ENEED_STATUS_UNSUPPLIED)) {
+					log_to_empire(emp, ELOG_ALERT, "Your military on %s is supplied again.", eisle->name ? eisle->name : get_island(eisle->island, TRUE)->name);
+					REMOVE_BIT(needs->status, ENEED_STATUS_UNSUPPLIED);
+				}
+			}
+		}
+	}
+}
+
+
+/**
 * This runs once per mud hour to update all empire chores.
 */
 void chore_update(void) {
@@ -976,6 +1039,9 @@ void chore_update(void) {
 			HASH_ITER(hh, EMPIRE_ISLANDS(emp), eisle, next_eisle) {
 				// TODO: currently this runs 1 need at a time, but could probably save a lot of processing if it ran all needs at once
 				HASH_ITER(hh, eisle->needs, needs, next_needs) {
+					if (needs->type == ENEED_MILITARY) {
+						continue;
+					}
 					if (needs->needed > 0 && !EMPIRE_ADMIN_FLAGGED(emp, EADM_FREE_NEEDS)) {
 						update_empire_needs(emp, eisle, needs);
 					}
@@ -1541,7 +1607,9 @@ char_data *place_chore_worker(empire_data *emp, int chore, room_data *room) {
 				mob = spawn_empire_npc_to_room(emp, npc, room, NOTHING);
 				
 				// guarantee SPAWNED flag -- the spawn timer will be reset each time the mob works (charge_workforce), until it's done
-				set_mob_flags(mob, MOB_SPAWNED);
+				if (mob) {
+					set_mob_flags(mob, MOB_SPAWNED);
+				}
 				break;
 			}
 		}
@@ -1552,7 +1620,9 @@ char_data *place_chore_worker(empire_data *emp, int chore, room_data *room) {
 		mob = spawn_empire_npc_to_room(emp, npc, room, chore_data[chore].mob);
 		
 		// guarantee SPAWNED flag -- the spawn timer will be reset each time the mob works (charge_workforce), until it's done
-		set_mob_flags(mob, MOB_SPAWNED);
+		if (mob) {
+			set_mob_flags(mob, MOB_SPAWNED);
+		}
 	}
 	else if (!mob) {
 		log_workforce_problem(emp, room, chore, WF_PROB_NO_WORKERS, FALSE);

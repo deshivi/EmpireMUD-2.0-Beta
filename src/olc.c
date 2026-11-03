@@ -201,6 +201,7 @@ OLC_MODULE(bedit_extrarooms);
 OLC_MODULE(bedit_fame);
 OLC_MODULE(bedit_flags);
 OLC_MODULE(bedit_functions);
+OLC_MODULE(bedit_garrison_capacity);
 OLC_MODULE(bedit_half_icon);
 OLC_MODULE(bedit_height);
 OLC_MODULE(bedit_hitpoints);
@@ -807,6 +808,7 @@ const struct olc_command_data olc_data[] = {
 	{ "fame", bedit_fame, OLC_BUILDING, OLC_CF_EDITOR },
 	{ "flags", bedit_flags, OLC_BUILDING, OLC_CF_EDITOR },
 	{ "functions", bedit_functions, OLC_BUILDING, OLC_CF_EDITOR },
+	{ "garrison-capacity", bedit_garrison_capacity, OLC_BUILDING, OLC_CF_EDITOR },
 	{ "halficon", bedit_half_icon, OLC_BUILDING, OLC_CF_EDITOR },
 	{ "height", bedit_height, OLC_BUILDING, OLC_CF_EDITOR },
 	{ "health", bedit_hitpoints, OLC_BUILDING, OLC_CF_EDITOR },

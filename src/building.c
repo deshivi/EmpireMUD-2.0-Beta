@@ -347,6 +347,7 @@ void complete_building(room_data *room) {
 	// remove incomplete
 	REMOVE_BIT(ROOM_BASE_FLAGS(room), ROOM_AFF_INCOMPLETE);
 	affect_total_room(room);
+	military_refresh();
 	
 	complete_wtrigger(room);
 	
@@ -375,6 +376,9 @@ void complete_building(room_data *room) {
 		// reset population timer
 		if ((ter = find_territory_entry(emp, room))) {
 			ter->population_timer = config_get_int("building_population_timer");
+			if (is_garrison(room)) {
+				reset_garrison_recruitment(room);
+			}
 		}
 	}
 	
@@ -421,6 +425,10 @@ void construct_building(room_data *room, bld_vnum type) {
 	
 	// set actual data
 	attach_building_to_room(building_proto(type), room, TRUE);
+	if (GET_BLD_GARRISON_CAPACITY(GET_BUILDING(room)) > 0) {
+		set_room_extra_data(room, ROOM_EXTRA_GARRISON_LIMIT, -1);
+	}
+	military_refresh();
 	
 	// check for territory updates
 	if (ROOM_OWNER(room) && was_large != LARGE_CITY_RADIUS(room)) {
@@ -591,6 +599,10 @@ void disassociate_building(room_data *room) {
 	int was_ter, is_ter;
 	char_data *temp_ch;
 	
+	military_refresh();
+	remove_room_extra_data(room, ROOM_EXTRA_GARRISON_LIMIT);
+	remove_room_extra_data(room, ROOM_EXTRA_GARRISON_RECRUIT_TIME);
+
 	// for updating territory counts
 	was_large = ROOM_BLD_FLAGGED(room, BLD_LARGE_CITY_RADIUS) ? TRUE : FALSE;
 	was_ter = ROOM_OWNER(room) ? get_territory_type_for_empire(room, ROOM_OWNER(room), FALSE, &junk, NULL) : TER_FRONTIER;
@@ -1515,6 +1527,9 @@ void start_dismantle_building(room_data *loc) {
 
 	SET_BIT(ROOM_BASE_FLAGS(loc), ROOM_AFF_DISMANTLING);
 	affect_total_room(loc);
+	remove_room_extra_data(loc, ROOM_EXTRA_GARRISON_LIMIT);
+	remove_room_extra_data(loc, ROOM_EXTRA_GARRISON_RECRUIT_TIME);
+	military_refresh();
 	delete_room_npcs(loc, NULL, TRUE);
 	
 	if (loc && ROOM_OWNER(loc) && GET_BUILDING(loc) && complete) {
@@ -1798,6 +1813,14 @@ bool start_upgrade(char_data *ch, craft_data *upgrade_craft, room_data *from_roo
 			}
 			
 			// don't disassociate; just attach new building type
+			if (GET_BLD_GARRISON_CAPACITY(to_building) > 0 && (!GET_BUILDING(from_room) || GET_BLD_GARRISON_CAPACITY(GET_BUILDING(from_room)) <= 0)) {
+				set_room_extra_data(from_room, ROOM_EXTRA_GARRISON_LIMIT, -1);
+			}
+			else if (GET_BLD_GARRISON_CAPACITY(to_building) <= 0) {
+				remove_room_extra_data(from_room, ROOM_EXTRA_GARRISON_LIMIT);
+				remove_room_extra_data(from_room, ROOM_EXTRA_GARRISON_RECRUIT_TIME);
+			}
+			military_refresh();
 			dismantle_wtrigger(from_room, NULL, FALSE);
 			detach_building_from_room(from_room);
 			attach_building_to_room(building_proto(GET_BLD_VNUM(to_building)), from_room, TRUE);
@@ -2748,6 +2771,8 @@ ACMD(do_designate) {
 		}
 		
 		set_room_extra_data(new, ROOM_EXTRA_REDESIGNATE_TIME, time(0));
+		reconcile_garrison(home);
+		military_refresh();
 
 		/* send messages */
 		if (subcmd == SCMD_REDESIGNATE) {

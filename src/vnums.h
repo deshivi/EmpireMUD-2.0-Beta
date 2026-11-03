@@ -102,6 +102,7 @@
 #define CRAFTING_APPRENTICE  283
 #define PRODUCTION_ASSISTANT  284
 #define PROSPECTOR  285
+#define SOLDIER  292
 
 
  //////////////////////////////////////////////////////////////////////////////

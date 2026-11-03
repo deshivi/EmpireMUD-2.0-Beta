@@ -163,6 +163,27 @@ the value.
 
 If you want to experiment with the system, you can change test_config in the
 "other" set.
+
+Military garrison tuning is in the Empire set. Accepted changes are saved and
+take effect live without a reboot, on the next relevant tick. Recruitment
+changes restart pending waits from now without catch-up; radius and route-retry
+changes clear cached routes. These settings do not change per-building OLC
+military capacity or the normal player military command. View their bounds and
+explanations with:
+
+  > config Empire -v
+
+Defaults are military_radius 20, military_update_interval 3,
+military_stand_down_time 30, military_blocked_return_time 60,
+military_route_retry_time 30, military_recruitment_interval 0,
+military_food_interval 75, and military_needs_interval 1800. Radius is in tiles;
+all intervals are seconds. Recruitment interval 0 keeps the ordinary
+building_population_timer cadence; a nonzero value overrides it.
+
+For a quick live test and restore, shorten an interval and then set its default:
+
+  > config military_update_interval 1
+  > config military_update_interval 3
 #b
 CREATE
 

@@ -871,6 +871,16 @@ void heartbeat(unsigned long heart_pulse) {
 		update_guard_towers();
 		HEARTBEAT_LOG("4")
 	}
+	if (HEARTBEAT(config_get_int("military_update_interval"))) {
+		military_update();
+	}
+	if (HEARTBEAT(1)) {
+		military_recruitment_update();
+		military_needs_update();
+	}
+	if (HEARTBEAT_OFFSET(config_get_int("military_food_interval"), 1)) {
+		military_upkeep();
+	}
 	
 	if (HEARTBEAT(30)) {
 		sanity_check();

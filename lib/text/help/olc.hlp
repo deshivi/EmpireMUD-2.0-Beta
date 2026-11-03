@@ -4010,9 +4010,21 @@ See also: OLC BUILDINGS, OLC CROPS, OLC SECTORS, OLC VEHICLES, INTERACTIONS
 Usage:  .military <number>
 
 This property adds to the military total of the empire that owns it. However,
-the military value of an empire is not used for anything at the moment.
+the military score does not recruit or deploy soldiers and is not otherwise
+used at the moment. Use the garrison-capacity property to set the base number
+of soldiers that a completed building can house, before bedroom bonuses.
 
 See also: OLC BUILDINGS, OLC VEHICLES
+#d
+"BEDIT GARRISON-CAPACITY"
+
+Usage:  .garrison-capacity <number>
+
+This property sets the base number of soldiers a completed building can house.
+Each completed bedroom inside the building adds one more place. A value of 0
+means the building cannot house a garrison.
+
+See also: BEDIT MILITARY, OLC BUILDINGS
 #d
 "BEDIT NAME"
 

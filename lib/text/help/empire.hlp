@@ -1049,6 +1049,42 @@ empire members.
 
 See also: ENROLL, PLEDGE, ROSTER, TERRITORY, AUTO-DELETE
 #
+MILITARY GARRISON SOLDIERS
+
+Usage:  military
+        military here
+        military roster [here | coordinates]
+        military limit <off | max | number>
+
+Military garrisons enlist real citizens as soldiers. A barracks or mountain
+garrison holds 5 soldiers, plus one for each completed bedroom inside it.
+Recruitment moves eligible citizens from anywhere in your empire, including
+other islands and vehicles. Citizens busy with workforce chores, artisans,
+fighters, charmed, tied, or led citizens, and already enlisted soldiers are
+not eligible. Recruitment happens one citizen per building population timer
+(currently about 48 minutes).
+
+Use "military" to see your garrisons, and "military here" to see the garrison
+at your current location. "military roster" lists your soldiers; add "here" or
+coordinates to limit the roster to a location. "military limit" sets the
+recruitment limit for the garrison here: off disables recruitment, max uses
+all available capacity, and a number sets a target up to that capacity.
+Existing buildings start with recruitment off; newly completed garrisons start
+at max. Changing garrison settings requires the Workforce privilege.
+
+When supplied with food, a garrison defends hostile intruders on owned land
+within 20 map tiles. Soldiers can walk over owned or unclaimed land within
+that range, but cannot travel by ship or defend from ships. They defend even
+when no empire members are online. Every enlisted soldier, including those
+off duty, consumes 1 fullness every 75 seconds; food is billed every 30
+minutes. If food is unavailable, recruitment and new engagements pause.
+
+A soldier killed in combat is lost along with that citizen. Standing down a
+soldier preserves the citizen, including any wounds. Building Military values
+still affect the empire's military score, but do not recruit or deploy soldiers.
+
+See also: BARRACKS, MOUNTAIN GARRISON, WORKFORCE, EMPIRE SCORE
+#
 "MOUNTAIN ENGINEERING" "MOUNTAIN ENGINEERING GOAL"
 
 Mountain Engineering (Community goal)

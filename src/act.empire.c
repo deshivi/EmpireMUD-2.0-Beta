@@ -725,7 +725,10 @@ static void show_detailed_empire(char_data *ch, empire_data *e) {
 
 	prettier_sprintbit(EMPIRE_FRONTIER_TRAITS(e), empire_trait_types, buf);
 	build_page_display(ch, "Frontier traits: %s", buf);
-	build_page_display(ch, "Population: %d player%s, %d citizen%s, %d military", EMPIRE_MEMBERS(e), (EMPIRE_MEMBERS(e) != 1 ? "s" : ""), EMPIRE_POPULATION(e), (EMPIRE_POPULATION(e) != 1 ? "s" : ""), EMPIRE_MILITARY(e));
+	build_page_display(ch, "Population: %d player%s, %d citizen%s, %d military score", EMPIRE_MEMBERS(e), (EMPIRE_MEMBERS(e) != 1 ? "s" : ""), EMPIRE_POPULATION(e), (EMPIRE_POPULATION(e) != 1 ? "s" : ""), EMPIRE_MILITARY(e));
+	if (is_own_empire) {
+		build_page_display(ch, "Soldiers: %d enlisted, %d active (military score: %d)", get_empire_soldiers(e, FALSE), get_empire_soldiers(e, TRUE), EMPIRE_MILITARY(e));
+	}
 	build_page_display(ch, "Territory: %d/%d (%d in-city, %d/%d outskirts, %d/%d frontier)", EMPIRE_TERRITORY(e, TER_TOTAL), land_can_claim(e, TER_TOTAL), EMPIRE_TERRITORY(e, TER_CITY), EMPIRE_TERRITORY(e, TER_OUTSKIRTS), land_can_claim(e, TER_OUTSKIRTS), EMPIRE_TERRITORY(e, TER_FRONTIER), land_can_claim(e, TER_FRONTIER));
 	build_page_display(ch, "(Land per greatness: %d, Land per 100 wealth: %d, Bonus territory: %d)", (config_get_int("land_per_greatness") + EMPIRE_ATTRIBUTE(e, EATT_TERRITORY_PER_GREATNESS)), EMPIRE_ATTRIBUTE(e, EATT_TERRITORY_PER_100_WEALTH), EMPIRE_ATTRIBUTE(e, EATT_BONUS_TERRITORY));
 
@@ -1540,6 +1543,9 @@ void show_workforce_why(empire_data *emp, char_data *ch, char *argument) {
 	HASH_ITER(hh, EMPIRE_ISLANDS(emp), isle, next_isle) {
 		if (isle->population > 0 && empire_has_needs_status(emp, isle->island, ENEED_WORKFORCE, ENEED_STATUS_UNSUPPLIED)) {
 			sprintf(unsupplied + strlen(unsupplied), " Your workforce on %s is starving!\r\n", get_island_name_for(isle->island, ch));
+		}
+		if (empire_has_needs_status(emp, isle->island, ENEED_MILITARY, ENEED_STATUS_UNSUPPLIED)) {
+			sprintf(unsupplied + strlen(unsupplied), " Your military on %s is starving!\r\n", get_island_name_for(isle->island, ch));
 		}
 	}
 	
@@ -5810,9 +5816,17 @@ ACMD(do_enroll) {
 				// needs
 				HASH_ITER(hh, from_isle->needs, needs, next_needs) {
 					add_empire_needs(e, from_isle->island, needs->type, needs->needed);
+					if (needs->type == ENEED_MILITARY && IS_SET(needs->status, ENEED_STATUS_UNSUPPLIED)) {
+						SET_BIT(get_empire_needs(e, from_isle->island, ENEED_MILITARY)->status, ENEED_STATUS_UNSUPPLIED);
+					}
 				}
 			}
 			
+			// Keep the earlier military billing time when merging the two debts.
+			if (EMPIRE_MILITARY_LAST_NEEDS(old) && (!EMPIRE_MILITARY_LAST_NEEDS(e) || EMPIRE_MILITARY_LAST_NEEDS(old) < EMPIRE_MILITARY_LAST_NEEDS(e))) {
+				EMPIRE_MILITARY_LAST_NEEDS(e) = EMPIRE_MILITARY_LAST_NEEDS(old);
+			}
+
 			// convert shipping (before doing vehicles)
 			convert_empire_shipping(old, e);
 			
@@ -5885,6 +5899,8 @@ ACMD(do_enroll) {
 				}
 			}
 			
+			military_refresh();
+
 			// move coins (use same empire to get them at full value)
 			increase_empire_coins(e, e, EMPIRE_COINS(old));
 			
@@ -6100,7 +6116,10 @@ ACMD(do_estats) {
 	}
 	
 	// stats
-	msg_to_char(ch, "Population: %d player%s, %d citizen%s, %d military\r\n", EMPIRE_MEMBERS(emp), PLURAL(EMPIRE_MEMBERS(emp)), EMPIRE_POPULATION(emp), PLURAL(EMPIRE_POPULATION(emp)), EMPIRE_MILITARY(emp));
+	msg_to_char(ch, "Population: %d player%s, %d citizen%s, %d military score\r\n", EMPIRE_MEMBERS(emp), PLURAL(EMPIRE_MEMBERS(emp)), EMPIRE_POPULATION(emp), PLURAL(EMPIRE_POPULATION(emp)), EMPIRE_MILITARY(emp));
+	if (GET_LOYALTY(ch) == emp || GET_ACCESS_LEVEL(ch) >= LVL_CIMPL || IS_GRANTED(ch, GRANT_EMPIRES)) {
+		msg_to_char(ch, "Soldiers: %d enlisted, %d active\r\n", get_empire_soldiers(emp, FALSE), get_empire_soldiers(emp, TRUE));
+	}
 	msg_to_char(ch, "Territory: %d/%d (%d in-city, %d/%d outskirts, %d/%d frontier)\r\n", EMPIRE_TERRITORY(emp, TER_TOTAL), land_can_claim(emp, TER_TOTAL), EMPIRE_TERRITORY(emp, TER_CITY), EMPIRE_TERRITORY(emp, TER_OUTSKIRTS), land_can_claim(emp, TER_OUTSKIRTS), EMPIRE_TERRITORY(emp, TER_FRONTIER), land_can_claim(emp, TER_FRONTIER));
 	msg_to_char(ch, "Wealth: %d (%d treasure + %.1f coin%s at %d%%)\r\n", (int) GET_TOTAL_WEALTH(emp), EMPIRE_WEALTH(emp), EMPIRE_COINS(emp), (EMPIRE_COINS(emp) != 1.0 ? "s" : ""), (int)(COIN_VALUE * 100));
 	msg_to_char(ch, "Greatness: %d, Fame: %d\r\n", EMPIRE_GREATNESS(emp), EMPIRE_FAME(emp));

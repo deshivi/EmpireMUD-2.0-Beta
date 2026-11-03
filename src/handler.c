@@ -1662,6 +1662,8 @@ void extract_char_final(char_data *ch) {
 	
 	// shut this off -- no need to total during an extract
 	pause_affect_total = TRUE;
+	military_snapshot_soldier(ch);
+	military_forget_soldier(ch);
 	
 	// update iterators
 	if (ch == global_next_player) {
@@ -3683,6 +3685,8 @@ void perform_abandon_room(room_data *room) {
 	}
 	
 	ROOM_OWNER(room) = NULL;
+	remove_room_extra_data(room, ROOM_EXTRA_GARRISON_LIMIT);
+	military_refresh();
 
 	REMOVE_BIT(ROOM_BASE_FLAGS(room), ROOM_AFF_PUBLIC | ROOM_AFF_PRIVATE | ROOM_AFF_NO_WORK | ROOM_AFF_NO_ABANDON | ROOM_AFF_NO_DISMANTLE);
 
@@ -3790,6 +3794,7 @@ void perform_claim_room(room_data *room, empire_data *emp) {
 	
 	ROOM_OWNER(room) = emp;
 	remove_room_extra_data(room, ROOM_EXTRA_CEDED);	// not ceded if just claimed
+	military_refresh();
 	
 	adjust_building_tech(emp, room, TRUE);
 	

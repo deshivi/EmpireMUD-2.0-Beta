@@ -286,6 +286,7 @@
 #define GET_BLD_BASE_AFFECTS(bld)  ((bld)->base_affects)
 #define GET_BLD_CITIZENS(bld)  ((bld)->citizens)
 #define GET_BLD_MILITARY(bld)  ((bld)->military)
+#define GET_BLD_GARRISON_CAPACITY(bld)  ((bld)->garrison_capacity)
 #define GET_BLD_ARTISAN(bld)  ((bld)->artisan_vnum)
 #define GET_BLD_RELATIONS(bld)  ((bld)->relations)
 #define GET_BLD_SCRIPTS(bld)  ((bld)->proto_script)
@@ -637,6 +638,7 @@ int CAN_CARRY_N(char_data *ch);	// formerly a macro
 #define EMPIRE_MEMBERS(emp)  ((emp)->members)
 #define EMPIRE_MEMBER_ACCOUNTS(emp)  ((emp)->member_accounts)
 #define EMPIRE_MILITARY(emp)  ((emp)->military)
+#define EMPIRE_MILITARY_LAST_NEEDS(emp)  ((emp)->military_needs_time)
 #define EMPIRE_MIN_LEVEL(emp)  ((emp)->min_level)
 #define EMPIRE_MOTD(emp)  ((emp)->motd)
 #define EMPIRE_NAME(emp)  ((emp)->name)
@@ -2540,6 +2542,16 @@ void look_at_room_by_loc(char_data *ch, room_data *room, bitvector_t options, ve
 void look_in_direction(char_data *ch, int dir);
 char *screenread_one_tile(char_data *ch, room_data *origin, room_data *to_room, bool show_dark);
 
+// military.c
+void military_forget_soldier(char_data *ch);
+bool military_can_aggro(char_data *ch);
+void military_config_changed(char *key);
+void military_note_damage(char_data *ch);
+void military_recruitment_update(void);
+void military_refresh(void);
+void military_snapshot_soldier(char_data *ch);
+void military_update(void);
+
 #define HOLYLIGHT_OR_TILE_OWNER(ch, room)  (PRF_FLAGGED((ch), PRF_HOLYLIGHT) || !ROOM_OWNER(room) || (GET_LOYALTY(ch) && GET_LOYALTY(ch) == ROOM_OWNER(room)))
 #define HOLYLIGHT_OR_VEH_OWNER(ch, veh)  (PRF_FLAGGED((ch), PRF_HOLYLIGHT) || !VEH_OWNER(veh) || (GET_LOYALTY(ch) && GET_LOYALTY(ch) == VEH_OWNER(veh)))
 
@@ -2602,6 +2614,7 @@ char *get_informative_color(char_data *ch, bool dismantling, bool unfinished, bo
 )
 
 // mobact.c
+bool empire_guard_is_enemy(empire_data *emp, char_data *vict, room_data *loc);
 void add_pursuit(char_data *ch, char_data *target);
 bool check_reset_mob(char_data *ch, bool force);
 bool check_scaling(char_data *mob, char_data *attacker);
@@ -2634,6 +2647,7 @@ void setup_generic_npc(char_data *mob, empire_data *emp, int name, int sex);
 void spawn_mobs_from_center(room_data *center);
 void spawn_one_room(room_data *room, bool only_artisans);
 bool try_mobile_movement(char_data *ch);
+bool validate_mobile_move_from(char_data *ch, room_data *from, int dir, room_data *to, bool pursuit);
 bool validate_spawn_location(room_data *room, bitvector_t spawn_flags, int x_coord, int y_coord, bool in_city);
 
 // modify.c
@@ -2889,11 +2903,25 @@ struct empire_npc_data *find_free_npc_for_chore(empire_data *emp, room_data *loc
 void free_workforce_where_log(struct workforce_where_log **to_free);
 int *get_ordered_chores();
 void log_workforce_where(empire_data *emp, char_data *mob, int chore, vehicle_data *veh);
+void military_needs_update(void);
+void military_upkeep(void);
 void remove_from_workforce_where_log(empire_data *emp, char_data *mob);
 void set_workforce_production_limit(empire_data *emp, any_vnum vnum, int amount);
 int sort_einv_by_amount(struct empire_storage_data *a, struct empire_storage_data *b);
 int sort_einv_by_perishable(struct empire_storage_data *a, struct empire_storage_data *b);
 void sort_einv_for_empire(empire_data *emp, int einv_sort_type);
+
+// garrison population (db.lib.c)
+void discharge_soldier(empire_data *emp, struct empire_npc_data *npc);
+int get_empire_soldiers(empire_data *emp, bool active_only);
+int get_garrison_capacity(room_data *room);
+int get_garrison_limit(room_data *room);
+int get_garrison_population(room_data *room);
+bool is_garrison(room_data *room);
+bool is_military_soldier(char_data *ch);
+void populate_garrison(empire_data *emp, struct empire_territory_data *ter, bool force);
+void reconcile_garrison(room_data *room);
+void reset_garrison_recruitment(room_data *room);
 
 
  //////////////////////////////////////////////////////////////////////////////

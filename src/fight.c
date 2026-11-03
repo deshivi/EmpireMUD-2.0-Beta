@@ -3531,6 +3531,9 @@ int damage(char_data *ch, char_data *victim, int dam, int attacktype, byte damty
 	// Add Damage
 	set_health(victim, GET_HEALTH(victim) - dam);
 	update_pos(victim);
+	if (dam > 0) {
+		military_note_damage(victim);
+	}
 	
 	if (ch != victim) {
 		combat_meter_damage_dealt(ch, dam);

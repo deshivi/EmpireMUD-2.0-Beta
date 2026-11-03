@@ -1188,10 +1188,12 @@ typedef struct vehicle_data vehicle_data;
 #define ELOG_WORKFORCE  9	// reporting related to workforce (does not echo, does not display unless requested)
 #define ELOG_PROGRESS  10	// empire progression goals
 #define ELOG_ALERT  11	// important messages
+#define ELOG_MILITARY  12	// reporting related to military upkeep
 
 
 // ENEED_x: empire need types
 #define ENEED_WORKFORCE  0	// food for workforce
+#define ENEED_MILITARY  1	// food for enlisted soldiers
 
 
 // ENEED_STATUS_x: empire need statuses
@@ -3109,6 +3111,8 @@ typedef enum {
 #define ROOM_EXTRA_ORIGINAL_BUILDER  20	// person who started the building
 #define ROOM_EXTRA_SECTOR_TIME  21	// when it became this sector type (for types with a timed evo)
 #define ROOM_EXTRA_WORKFORCE_PROSPECT  22	// progress tracker for workforce
+#define ROOM_EXTRA_GARRISON_LIMIT  23	// enlisted target: -1 for max, 0 for off, positive for numeric
+#define ROOM_EXTRA_GARRISON_RECRUIT_TIME  24	// next recruitment check when using a military timer override
 
 
 // SAVE_INFO_x: flags related to saving (this is a ubyte: only holds 8 bits)
@@ -4298,6 +4302,7 @@ struct bld_data {
 	
 	int citizens;	// how many people live here
 	int military;	// how much it adds to the military pool
+	int garrison_capacity;	// base number of enlisted soldiers housed here
 	mob_vnum artisan_vnum;	// vnum of an artisan to load
 	
 	struct extra_descr_data *ex_description;	// extra descriptions
@@ -5521,6 +5526,9 @@ struct empire_npc_data {
 	
 	empire_vnum empire_id;	// empire vnum
 	char_data *mob;
+	int soldier_health;	// saved health, per 1000
+	int soldier_scale;	// saved scale level
+	time_t soldier_recovery;	// deadline for normal wound recovery
 	struct empire_npc_data *next;	// linked list
 };
 
@@ -5754,6 +5762,7 @@ struct empire_data {
 	
 	// other saved data
 	time_t wf_log_and_needs_time;	// last time we updated wf logs and needs (saved to storage file)
+	time_t military_needs_time;	// last time we processed military needs
 	
 	// unsaved data
 	struct empire_territory_data *territory_list;	// hash table by vnum

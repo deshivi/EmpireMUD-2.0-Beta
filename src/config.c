@@ -358,6 +358,88 @@ const char *who_list_sort_types[] = {
 struct config_type *config_table = NULL;	// hash table of configs
 
 
+// Validation and defaults for the military configs. Defaults are applied
+// before the saved config file is loaded so older files remain safe.
+struct military_config_spec {
+	char *key;
+	int default_value;
+	int min_value;
+	int max_value;
+	char *description;
+};
+
+static struct military_config_spec military_config_specs[] = {
+	{ "military_blocked_return_time", 60, 1, 3600, "seconds a returning soldier may be route-blocked before standing down (1-3600; default 60; changes apply live)" },
+	{ "military_food_interval", 75, 1, 3600, "seconds between accruing 1 fullness per enlisted soldier (1-3600; default 75; changes apply live)" },
+	{ "military_needs_interval", 1800, 1, 86400, "seconds between billing accrued military food (1-86400; default 1800; changes apply live)" },
+	{ "military_radius", 20, 1, 50, "garrison defense and travel radius in tiles (1-50; default 20; changes apply live)" },
+	{ "military_recruitment_interval", 0, 0, 86400, "seconds between garrison recruitment attempts (0-86400; nonzero overrides building_population_timer, default 0 preserves it; changes apply live)" },
+	{ "military_route_retry_time", 30, 1, 3600, "seconds before retrying an unavailable military route or blocked target (1-3600; default 30; changes apply live)" },
+	{ "military_stand_down_time", 30, 1, 3600, "seconds after the last threat before soldiers return to quarters (1-3600; default 30; changes apply live)" },
+	{ "military_update_interval", 3, 1, 60, "seconds between military response updates (1-60; default 3; overrides the live heartbeat schedule)" },
+	{ NULL, 0, 0, 0, NULL }
+};
+
+
+/**
+* Finds validation metadata for a military config.
+*
+* @param char *key The exact config key.
+* @return struct military_config_spec* The matching spec, or NULL.
+*/
+static struct military_config_spec *get_military_config_spec(char *key) {
+	struct military_config_spec *spec;
+
+	if (!key) {
+		return NULL;
+	}
+	for (spec = military_config_specs; spec->key; ++spec) {
+		if (!strcmp(key, spec->key)) {
+			return spec;
+		}
+	}
+	return NULL;
+}
+
+
+/**
+* Strictly parses one integer, allowing surrounding whitespace only.
+*
+* @param char *argument The text to parse.
+* @param int *result Where to store a successful result.
+* @return bool TRUE for a complete, in-range integer; otherwise FALSE.
+*/
+static bool parse_military_config_int(char *argument, int *result) {
+	char *end;
+	long value;
+
+	if (!argument || !result) {
+		return FALSE;
+	}
+	while (isspace((unsigned char)*argument)) {
+		++argument;
+	}
+	if (!*argument) {
+		return FALSE;
+	}
+
+	errno = 0;
+	value = strtol(argument, &end, 10);
+	if (end == argument || errno == ERANGE || value < INT_MIN || value > INT_MAX) {
+		return FALSE;
+	}
+	while (isspace((unsigned char)*end)) {
+		++end;
+	}
+	if (*end) {
+		return FALSE;
+	}
+
+	*result = (int)value;
+	return TRUE;
+}
+
+
  //////////////////////////////////////////////////////////////////////////////
 //// CONFIG SYSTEM: HANDLERS /////////////////////////////////////////////////
 
@@ -1006,6 +1088,48 @@ CONFIG_HANDLER(config_edit_immortal_empire_restrictions) {
  //////////////////////////////////////////////////////////////////////////////
 //// CONFIG SYSTEM: CUSTOM EDITORS ///////////////////////////////////////////
 
+// Strict range validation and live rescheduling for military configs.
+CONFIG_HANDLER(config_edit_military_int) {
+	struct military_config_spec *spec;
+	int input, old;
+
+	// basic sanitation
+	if (!ch || !config) {
+		log("SYSERR: config_edit_military_int called without %s", ch ? "config" : "ch");
+		if (ch) {
+			msg_to_char(ch, "Error editing type.\r\n");
+		}
+		return;
+	}
+	if (config->type != CONFTYPE_INT || !(spec = (struct military_config_spec *)config->custom_data) || strcmp(config->key, spec->key)) {
+		log("SYSERR: config_edit_military_int called on invalid key %s", NULLSAFE(config->key));
+		msg_to_char(ch, "Error editing type.\r\n");
+		return;
+	}
+
+	if (!parse_military_config_int(argument, &input)) {
+		msg_to_char(ch, "Invalid argument '%s': enter a whole number from %d to %d.\r\n", NULLSAFE(argument), spec->min_value, spec->max_value);
+		return;
+	}
+	if (input < spec->min_value || input > spec->max_value) {
+		msg_to_char(ch, "%s must be from %d to %d.\r\n", config->key, spec->min_value, spec->max_value);
+		return;
+	}
+
+	old = config->data.int_val;
+	if (old == input) {
+		send_config_msg(ch, "ok_string");
+		return;
+	}
+
+	config->data.int_val = input;
+	save_config_system();
+	syslog(SYS_CONFIG, GET_INVIS_LEV(ch), TRUE, "CONFIG: %s set %s to %d, from %d", GET_NAME(ch), config->key, input, old);
+	msg_to_char(ch, "%s: set to %d, from %d.\r\n", config->key, input, old);
+	military_config_changed(config->key);
+}
+
+
 // resets after setting
 CONFIG_HANDLER(config_edit_autostore_time) {
 	int old = config_get_int("autostore_time");
@@ -1369,7 +1493,19 @@ void load_config_system_from_file(void) {
 				break;
 			}
 			case CONFTYPE_INT: {
-				cnf->data.int_val = atoi(arg);
+				struct military_config_spec *spec = get_military_config_spec(cnf->key);
+				int input;
+
+				if (!spec) {
+					cnf->data.int_val = atoi(arg);
+				}
+				else if (parse_military_config_int(arg, &input) && input >= spec->min_value && input <= spec->max_value) {
+					cnf->data.int_val = input;
+				}
+				else {
+					cnf->data.int_val = spec->default_value;
+					log("SYSERR: Invalid value '%s' for military config %s in %s; expected an integer from %d to %d, using default %d", arg, cnf->key, CONFIG_FILE, spec->min_value, spec->max_value, spec->default_value);
+				}
 				break;
 			}
 			case CONFTYPE_INT_ARRAY: {
@@ -1795,6 +1931,22 @@ void init_config_flags(char *key, bitvector_t flags) {
 }
 
 
+// Registers military configs and seeds defaults before persisted values load.
+static void init_military_configs(void) {
+	struct military_config_spec *spec;
+	struct config_type *cnf;
+
+	for (spec = military_config_specs; spec->key; ++spec) {
+		init_config(CONFIG_EMPIRE, spec->key, CONFTYPE_INT, spec->description);
+		init_config_custom(spec->key, NULL, config_edit_military_int, spec);
+		HASH_FIND_STR(config_table, spec->key, cnf);
+		if (cnf) {
+			cnf->data.int_val = spec->default_value;
+		}
+	}
+}
+
+
  //////////////////////////////////////////////////////////////////////////////
 //// CONFIG SYSTEM: SETUP ////////////////////////////////////////////////////
 
@@ -1919,6 +2071,7 @@ void init_config_system(void) {
 	init_config(CONFIG_EMPIRE, "land_min_cap", CONFTYPE_INT, "lowest possible claim cap, to prevent very low numbers");
 	init_config(CONFIG_EMPIRE, "land_outside_city_modifier", CONFTYPE_DOUBLE, "portion of land that can be in the outskirts area of cities");
 	init_config(CONFIG_EMPIRE, "building_population_timer", CONFTYPE_INT, "time interval for citizens populating buildings, in minutes");
+	init_military_configs();
 	init_config(CONFIG_EMPIRE, "frontier_timeout", CONFTYPE_INT, "after this many days, all frontier territory is lost; 0 to disable this");
 	init_config(CONFIG_EMPIRE, "time_to_empire_delete", CONFTYPE_INT, "weeks until an empire is deleted");
 	init_config(CONFIG_EMPIRE, "time_to_empire_emptiness", CONFTYPE_INT, "weeks until NPCs don't spawn");
