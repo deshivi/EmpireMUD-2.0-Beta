@@ -1,0 +1,6 @@
+# Optional subnet override for hosts where Docker cannot allocate a network.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: "${EMPIRE_DOCKER_SUBNET:?Set EMPIRE_DOCKER_SUBNET to an unused private subnet}"

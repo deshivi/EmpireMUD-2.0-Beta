@@ -1,0 +1,34 @@
+services:
+  mud:
+    build:
+      context: .
+    init: true
+    ports:
+      - "127.0.0.1:${EMPIRE_HOST_PORT:-4000}:4000"
+    volumes:
+      - mud_lib:/opt/empiremud/lib
+      - mud_runtime:/opt/empiremud/data
+      - mud_logs:/opt/empiremud/log
+      - mud_maps:/srv/maps
+    restart: unless-stopped
+    stop_grace_period: 5m
+    ulimits:
+      stack:
+        soft: -1
+        hard: -1
+
+  map:
+    image: php:8.3-apache-bookworm
+    depends_on:
+      - mud
+    ports:
+      - "127.0.0.1:${EMPIRE_MAP_HOST_PORT:-8081}:80"
+    volumes:
+      - mud_maps:/var/www/html:ro
+    restart: unless-stopped
+
+volumes:
+  mud_lib:
+  mud_runtime:
+  mud_logs:
+  mud_maps:
